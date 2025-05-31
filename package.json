@@ -1,6 +1,6 @@
 
 {
-  "name": "eq-loot-ws",
+  "name": "eq-loot-sync",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
