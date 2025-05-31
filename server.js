@@ -10,6 +10,8 @@ const wss = new WebSocket.Server({ server });
 
 app.use(cors());
 
+let currentLootList = [];
+
 function broadcast(data, sender) {
   wss.clients.forEach(client => {
     if (client !== sender && client.readyState === WebSocket.OPEN) {
@@ -19,14 +21,24 @@ function broadcast(data, sender) {
 }
 
 wss.on('connection', ws => {
-  console.log('New client connected');
+  console.log('Client connected');
+
+  // Send current loot list to new connection
+  if (currentLootList.length > 0) {
+    ws.send(JSON.stringify({ type: 'lootListUpdate', items: currentLootList }));
+  }
 
   ws.on('message', message => {
     try {
       const data = JSON.parse(message);
+
+      if (data.type === 'lootListUpdate') {
+        currentLootList = data.items;
+      }
+
       broadcast(data, ws);
     } catch (err) {
-      console.error('Error processing message:', err);
+      console.error('Invalid message received:', err);
     }
   });
 
@@ -37,5 +49,5 @@ wss.on('connection', ws => {
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-  console.log(`WebSocket server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
