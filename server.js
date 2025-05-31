@@ -22,23 +22,30 @@ let liveItems = [];
 // ✅ Load items.txt from Dropbox
 function loadItemDatabaseFromURL(url) {
   console.log('Loading item DB from Dropbox...');
+
   https.get(url, res => {
     let data = '';
+
     res.on('data', chunk => data += chunk);
     res.on('end', () => {
       const lines = data.split('\n');
       lines.forEach(line => {
-        const [id, name, slots, classes] = line.split('|');
-        if (!id || !name) return;
-        itemMap[name.trim().toLowerCase()] = {
-          id: parseInt(id),
-          name: name.trim()
-        };
+        const parts = line.split('|');
+        const id = parseInt(parts[5]);
+        const name = parts[1]?.trim();
+
+        if (id && name) {
+          itemMap[name.toLowerCase()] = {
+            id,
+            name
+          };
+        }
       });
-      console.log('Item DB loaded from Dropbox. Items:', Object.keys(itemMap).length);
+
+      console.log('✅ Item DB loaded from Dropbox —', Object.keys(itemMap).length, 'items');
     });
   }).on('error', err => {
-    console.error('Failed to fetch item DB from Dropbox:', err.message);
+    console.error('❌ Failed to fetch item DB from Dropbox:', err.message);
   });
 }
 
