@@ -3,7 +3,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const cors = require('cors');
 const fileUpload = require('express-fileupload');
-const fs = require('fs');
+const https = require('https');
 const path = require('path');
 
 const app = express();
@@ -19,19 +19,27 @@ app.use(fileUpload());
 let itemMap = {};
 let liveItems = [];
 
-// Load items.txt
-function loadItemDatabase() {
-  const data = fs.readFileSync('items.txt', 'utf8');
-  const lines = data.split('\n');
-  for (let line of lines) {
-    const [id, name, slots, classes] = line.split('|');
-    if (!id || !name) continue;
-    itemMap[name.trim().toLowerCase()] = {
-      id: parseInt(id),
-      name: name.trim()
-    };
-  }
-  console.log('Items loaded:', Object.keys(itemMap).length);
+// ✅ Load items.txt from Dropbox
+function loadItemDatabaseFromURL(url) {
+  console.log('Loading item DB from Dropbox...');
+  https.get(url, res => {
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => {
+      const lines = data.split('\n');
+      lines.forEach(line => {
+        const [id, name, slots, classes] = line.split('|');
+        if (!id || !name) return;
+        itemMap[name.trim().toLowerCase()] = {
+          id: parseInt(id),
+          name: name.trim()
+        };
+      });
+      console.log('Item DB loaded from Dropbox. Items:', Object.keys(itemMap).length);
+    });
+  }).on('error', err => {
+    console.error('Failed to fetch item DB from Dropbox:', err.message);
+  });
 }
 
 function broadcast(data, sender) {
@@ -121,5 +129,5 @@ wss.on('connection', ws => {
 
 server.listen(PORT, () => {
   console.log('Server started on port', PORT);
-  loadItemDatabase();
+  loadItemDatabaseFromURL('https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&raw=1');
 });
