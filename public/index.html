@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AA Loot Tracker</title>
+  <script src="https://eq.magelo.com/js/tooltips.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid #ccc; text-align: left; }
+    th { background: #f0f0f0; }
+    input[type="text"] { width: 100%; }
+  </style>
+</head>
+<body>
+  <h2>Upload EverQuest Log File</h2>
+  <input type="file" id="logFile" />
+  <button onclick="uploadLog()">Upload</button>
+
+  <h3>Looted Items</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Looter</th>
+        <th>Item</th>
+        <th>Recipient</th>
+        <th>Distributed</th>
+      </tr>
+    </thead>
+    <tbody id="itemTable"></tbody>
+  </table>
+
+  <script>
+    const ws = new WebSocket(`ws://${location.host}`);
+    let items = [];
+
+    ws.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+      if (data.type === 'lootListUpdate') {
+        items = data.items;
+        renderTable();
+      }
+      if (data.type === 'itemUpdate') {
+        items[data.index] = data;
+        renderTable();
+      }
+    };
+
+    function renderTable() {
+      const table = document.getElementById('itemTable');
+      table.innerHTML = '';
+      items.forEach((item, i) => {
+        const row = document.createElement('tr');
+
+        row.innerHTML = `
+          <td>${item.looter}</td>
+          <td><a href="https://eq.magelo.com/item/${item.id}" class="mageloLink" target="_blank">${item.name}</a></td>
+          <td><input type="text" value="${item.recipient || ''}" onchange="updateItem(${i})" /></td>
+          <td><input type="checkbox" ${item.distributed ? 'checked' : ''} onchange="updateItem(${i})" /></td>
+        `;
+
+        table.appendChild(row);
+      });
+
+      if (window.mageloTooltip) mageloTooltip.scan();
+    }
+
+    function updateItem(index) {
+      const row = document.getElementById('itemTable').rows[index];
+      const recipient = row.cells[2].querySelector('input[type="text"]').value;
+      const distributed = row.cells[3].querySelector('input[type="checkbox"]').checked;
+
+      ws.send(JSON.stringify({
+        type: 'itemUpdate',
+        index,
+        recipient,
+        distributed
+      }));
+    }
+
+    function uploadLog() {
+      const fileInput = document.getElementById('logFile');
+      const file = fileInput.files[0];
+      if (!file) return alert('No file selected.');
+
+      const formData = new FormData();
+      formData.append('logFile', file);
+
+      fetch('/upload-log', {
+        method: 'POST',
+        body: formData
+      }).then(res => res.json()).then(data => {
+        if (data.status === 'ok') {
+          console.log('Log uploaded');
+        }
+      });
+    }
+  </script>
+</body>
+</html>
