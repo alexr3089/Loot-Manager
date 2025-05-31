@@ -14,8 +14,11 @@
 </head>
 <body>
   <h2>Upload EverQuest Log File</h2>
-  <input type="file" id="logFile" />
-  <button onclick="uploadLog()">Upload</button>
+
+  <form id="logUploadForm">
+    <input type="file" name="logFile" id="logFile" />
+    <button type="submit">Upload</button>
+  </form>
 
   <h3>Looted Items</h3>
   <table>
@@ -31,7 +34,7 @@
   </table>
 
   <script>
-    const ws = new WebSocket(`ws://${location.host}`);
+    const ws = new WebSocket(`wss://${location.host}`);
     let items = [];
 
     ws.onmessage = function(event) {
@@ -78,9 +81,9 @@
       }));
     }
 
-    function uploadLog() {
-      const fileInput = document.getElementById('logFile');
-      const file = fileInput.files[0];
+    document.getElementById('logUploadForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const file = document.getElementById('logFile').files[0];
       if (!file) return alert('No file selected.');
 
       const formData = new FormData();
@@ -89,12 +92,20 @@
       fetch('/upload-log', {
         method: 'POST',
         body: formData
-      }).then(res => res.json()).then(data => {
+      })
+      .then(res => res.json())
+      .then(data => {
         if (data.status === 'ok') {
-          console.log('Log uploaded');
+          console.log('Log uploaded successfully.');
+        } else {
+          alert('Upload failed.');
         }
+      })
+      .catch(err => {
+        console.error('Upload error:', err);
+        alert('Upload error.');
       });
-    }
+    });
   </script>
 </body>
 </html>
