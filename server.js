@@ -19,13 +19,12 @@ app.use(fileUpload());
 let itemMap = {};
 let liveItems = [];
 
-// ✅ Load items.txt from Dropbox
+// ✅ FIXED: load item name and id from your items.txt columns (name = col 1, id = col 5)
 function loadItemDatabaseFromURL(url) {
   console.log('Loading item DB from Dropbox...');
 
   https.get(url, res => {
     let data = '';
-
     res.on('data', chunk => data += chunk);
     res.on('end', () => {
       const lines = data.split('\n');
@@ -35,10 +34,7 @@ function loadItemDatabaseFromURL(url) {
         const name = parts[1]?.trim();
 
         if (id && name) {
-          itemMap[name.toLowerCase()] = {
-            id,
-            name
-          };
+          itemMap[name.toLowerCase()] = { id, name };
         }
       });
 
@@ -135,6 +131,10 @@ wss.on('connection', ws => {
 });
 
 server.listen(PORT, () => {
-  console.log('Server started on port', PORT);
-  loadItemDatabaseFromURL('https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&raw=1');
+  console.log('🚀 Server started on port', PORT);
+
+  // ✅ Replace this link with your actual Dropbox raw link
+  loadItemDatabaseFromURL(
+    'https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&raw=1'
+  );
 });
