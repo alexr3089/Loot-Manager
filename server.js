@@ -19,7 +19,7 @@ app.use(fileUpload());
 let itemMap = {};
 let liveItems = [];
 
-// ✅ FIXED: load item name and id from your items.txt columns (name = col 1, id = col 5)
+// ✅ Load items.txt from Dropbox
 function loadItemDatabaseFromURL(url) {
   console.log('Loading item DB from Dropbox...');
 
@@ -54,6 +54,7 @@ function broadcast(data, sender) {
   });
 }
 
+// ✅ Updated loot match logic
 app.post('/upload-log', (req, res) => {
   if (!req.files || !req.files.logFile) {
     return res.status(400).send('No file uploaded.');
@@ -61,7 +62,8 @@ app.post('/upload-log', (req, res) => {
 
   const log = req.files.logFile;
   const lines = log.data.toString().split('\n');
-  const validLooters = ['Emilyn', 'Aerisia', 'Allinye', 'Izatri', 'Rainne', 'Melise', 'Renvain',
+
+  const validLooters = ['You', 'Emilyn', 'Aerisia', 'Allinye', 'Izatri', 'Rainne', 'Melise', 'Renvain',
                         'Kristalyn', 'Ellinye', 'Sarilyn', 'Lucilly', 'Aelise', 'Renvina', 'Ayria'];
 
   const lootRegexes = [
@@ -69,7 +71,9 @@ app.post('/upload-log', (req, res) => {
     /(\w+) looted a (.+?)(?: from|$)/i,
     /(\w+) looted an (.+?)(?: from|$)/i,
     /(\w+) looted (.+?)(?: from|$)/i,
-    /(.+?) was looted by (\w+)/i
+    /(.+?) was looted by (\w+)/i,
+    /--You have looted (?:a|an) (.+?) from .*?--/i,
+    /--(\w+) has looted (?:a|an) (.+?) from .*?--/i
   ];
 
   const parsedItems = [];
@@ -79,9 +83,16 @@ app.post('/upload-log', (req, res) => {
       const match = line.match(regex);
       if (match) {
         let looter, itemName;
+
         if (regex.source.includes('was looted by')) {
           itemName = match[1].trim();
           looter = match[2].trim();
+        } else if (regex.source.includes('You have looted')) {
+          itemName = match[1].trim();
+          looter = 'You';
+        } else if (regex.source.includes('--') && regex.source.includes('has looted')) {
+          looter = match[1].trim();
+          itemName = match[2].trim();
         } else {
           looter = match[1].trim();
           itemName = match[2].trim();
@@ -99,7 +110,7 @@ app.post('/upload-log', (req, res) => {
             });
           }
         }
-        break;
+        break; // once matched, move to next line
       }
     }
   }
@@ -133,7 +144,7 @@ wss.on('connection', ws => {
 server.listen(PORT, () => {
   console.log('🚀 Server started on port', PORT);
 
-  // ✅ Replace this link with your actual Dropbox raw link
+  // ✅ Link to your Dropbox file with raw=1
   loadItemDatabaseFromURL(
     'https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&raw=1'
   );
