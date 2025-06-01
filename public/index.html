@@ -47,7 +47,7 @@
   </table>
 
   <script>
-    const ws = new WebSocket(`wss://${location.host}`);
+    const ws = new WebSocket('wss://loot-manager-production.up.railway.app');
     let items = [];
 
     ws.onopen = () => console.log('Connected to WebSocket');
