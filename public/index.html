@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,30 +6,16 @@
   <title>AA Loot Tracker</title>
   <script src="https://eq.magelo.com/js/tooltips.js"></script>
   <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 8px;
-      border-bottom: 1px solid #ccc;
-      text-align: left;
-    }
-    th {
-      background: #f0f0f0;
-    }
-    input[type="text"] {
-      width: 100%;
-    }
+    body { font-family: sans-serif; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid #ccc; text-align: left; }
+    th { background: #f0f0f0; }
+    input[type="text"] { width: 100%; }
   </style>
 </head>
 <body>
   <h2>Upload EverQuest Log File</h2>
-  <form id="logUploadForm">
+  <form id="logUploadForm" enctype="multipart/form-data">
     <input type="file" name="logFile" id="logFile" />
     <button type="submit">Upload</button>
   </form>
@@ -82,56 +69,42 @@
         `;
         table.appendChild(row);
       });
-
-      // Delay tooltip scan for DOM updates
-      setTimeout(() => {
-        if (window.mageloTooltip) mageloTooltip.scan();
-      }, 0);
+      setTimeout(() => window.mageloTooltip?.scan(), 0);
     }
 
     function updateItem(index) {
       const row = document.getElementById('itemTable').rows[index];
       const recipient = row.cells[2].querySelector('input[type="text"]').value;
       const distributed = row.cells[3].querySelector('input[type="checkbox"]').checked;
-
-      ws.send(JSON.stringify({
-        type: 'itemUpdate',
-        index,
-        recipient,
-        distributed
-      }));
+      ws.send(JSON.stringify({ type: 'itemUpdate', index, recipient, distributed }));
     }
 
     document.getElementById('logUploadForm').addEventListener('submit', function(e) {
       e.preventDefault();
       const file = document.getElementById('logFile').files[0];
       if (!file) return alert('No file selected.');
-
       const formData = new FormData();
       formData.append('logFile', file);
-
       fetch('/upload-log', {
         method: 'POST',
         body: formData
       })
-        .then(res => {
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-          }
-          return res.json();
-        })
-        .then(data => {
-          if (data.status === 'ok') {
-            console.log('Log uploaded successfully.');
-            alert('Log uploaded successfully. Items will appear in the table.');
-          } else {
-            alert('Upload failed: ' + (data.message || 'Unknown error'));
-          }
-        })
-        .catch(err => {
-          console.error('Upload error:', err);
-          alert('Upload error: ' + err.message);
-        });
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        return res.json();
+      })
+      .then(data => {
+        if (data.status === 'ok') {
+          console.log('Log uploaded successfully.');
+          alert('Log uploaded successfully.');
+        } else {
+          alert('Upload failed: ' + (data.message || 'Unknown error'));
+        }
+      })
+      .catch(err => {
+        console.error('Upload error:', err);
+        alert('Upload error: ' + err.message);
+      });
     });
   </script>
 </body>
