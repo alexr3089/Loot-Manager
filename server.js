@@ -9,11 +9,9 @@ const app = express();
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(cors({ origin: '*' })); // Allow Zoho Sites
-app.use(fileUpload());
-app.use(express.static('public'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cors());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(fileUpload()); // ✅ Enable file upload parsing
 
 
 let items = []; // In-memory loot list
