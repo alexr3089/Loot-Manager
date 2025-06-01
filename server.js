@@ -4,8 +4,9 @@ const http = require('http');
 const WebSocket = require('ws');
 const cors = require('cors');
 const fileUpload = require('express-fileupload');
-const https = require('https');
 const path = require('path');
+const https = require('https');
+const readline = require('readline');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,10 +21,36 @@ app.use(fileUpload());
 let itemMap = {};
 let liveItems = [];
 
+// Fetch and parse items.txt from Dropbox
+const dropboxUrl = "https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&st=tnv6b1vb&dl=1";
+
+function loadItemMapFromDropbox() {
+  https.get(dropboxUrl, res => {
+    const rl = readline.createInterface({ input: res, crlfDelay: Infinity });
+    rl.on('line', line => {
+      const parts = line.split('|');
+      if (parts.length > 5 && !isNaN(parts[5])) {
+        const name = parts[1].toLowerCase().trim();
+        const id = parseInt(parts[5]);
+        if (name && id) {
+          itemMap[name] = { id, name: parts[1] };
+        }
+      }
+    });
+    rl.on('close', () => {
+      console.log(`✅ Loaded ${Object.keys(itemMap).length} items into itemMap`);
+    });
+  }).on('error', err => {
+    console.error('Failed to load items.txt:', err);
+  });
+}
+
+// Load the item map on server start
+loadItemMapFromDropbox();
+
 app.post('/upload-log', (req, res) => {
   console.log('---- UPLOAD RECEIVED ----');
   console.log('Headers:', req.headers);
-  console.log('Body type:', typeof req.body);
   console.log('Files:', req.files);
 
   if (!req.files || !req.files.logFile) {
@@ -66,10 +93,11 @@ app.post('/upload-log', (req, res) => {
           looter = match[1].trim();
           itemName = match[2].trim();
         }
+        const itemId = itemMap[itemName.toLowerCase()]?.id || 999;
         parsedItems.push({
           looter,
           name: itemName,
-          id: itemMap[itemName.toLowerCase()]?.id || 999,
+          id: itemId,
           recipient: '',
           distributed: false
         });
