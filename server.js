@@ -1,151 +1,130 @@
 const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
-const cors = require('cors');
 const fileUpload = require('express-fileupload');
-const https = require('https');
+const fs = require('fs').promises;
 const path = require('path');
+const cors = require('cors');
+const WebSocket = require('ws');
 
 const app = express();
-const server = http.createServer(app);
+const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.PORT || 3000;
-
+// Middleware
 app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload());
 
-let itemMap = {};
-let liveItems = [];
-
-// ✅ Load items.txt from Dropbox
-function loadItemDatabaseFromURL(url) {
-  console.log('Loading item DB from Dropbox...');
-
-  https.get(url, res => {
-    let data = '';
-    res.on('data', chunk => data += chunk);
-    res.on('end', () => {
-      const lines = data.split('\n');
-      lines.forEach(line => {
-        const parts = line.split('|');
-        const id = parseInt(parts[5]);
-        const name = parts[1]?.trim();
-
-        if (id && name) {
-          itemMap[name.toLowerCase()] = { id, name };
-        }
-      });
-
-      console.log('✅ Item DB loaded from Dropbox —', Object.keys(itemMap).length, 'items');
-    });
-  }).on('error', err => {
-    console.error('❌ Failed to fetch item DB from Dropbox:', err.message);
-  });
-}
-
-function broadcast(data, sender) {
-  const msg = JSON.stringify(data);
-  wss.clients.forEach(client => {
-    if (client !== sender && client.readyState === WebSocket.OPEN) {
-      client.send(msg);
-    }
-  });
-}
-
-// ✅ Updated loot match logic
-app.post('/upload-log', (req, res) => {
-  if (!req.files || !req.files.logFile) {
-    return res.status(400).send('No file uploaded.');
-  }
-
-  const log = req.files.logFile;
-  const lines = log.data.toString().split('\n');
-
-  const validLooters = ['You', 'Emilyn', 'Aerisia', 'Allinye', 'Izatri', 'Rainne', 'Melise', 'Renvain',
-                        'Kristalyn', 'Ellinye', 'Sarilyn', 'Lucilly', 'Aelise', 'Renvina', 'Ayria'];
-
-  const lootRegexes = [
-    /(\w+) has looted (?:a|an) (.+?)(?: from|$)/i,
-    /(\w+) looted a (.+?)(?: from|$)/i,
-    /(\w+) looted an (.+?)(?: from|$)/i,
-    /(\w+) looted (.+?)(?: from|$)/i,
-    /(.+?) was looted by (\w+)/i,
-    /--You have looted (?:a|an) (.+?) from .*?--/i,
-    /--(\w+) has looted (?:a|an) (.+?) from .*?--/i
-  ];
-
-  const parsedItems = [];
-
-  for (const line of lines) {
-    for (const regex of lootRegexes) {
-      const match = line.match(regex);
-      if (match) {
-        let looter, itemName;
-
-        if (regex.source.includes('was looted by')) {
-          itemName = match[1].trim();
-          looter = match[2].trim();
-        } else if (regex.source.includes('You have looted')) {
-          itemName = match[1].trim();
-          looter = 'You';
-        } else if (regex.source.includes('--') && regex.source.includes('has looted')) {
-          looter = match[1].trim();
-          itemName = match[2].trim();
-        } else {
-          looter = match[1].trim();
-          itemName = match[2].trim();
-        }
-
-        if (validLooters.includes(looter)) {
-          const item = itemMap[itemName.toLowerCase()];
-          if (item) {
-            parsedItems.push({
-              looter,
-              name: item.name,
-              id: item.id,
-              recipient: '',
-              distributed: false
-            });
-          }
-        }
-        break; // once matched, move to next line
-      }
-    }
-  }
-
-  liveItems = parsedItems.sort((a, b) => a.name.localeCompare(b.name));
-  broadcast({ type: 'lootListUpdate', items: liveItems });
-  res.json({ status: 'ok' });
-});
-
-wss.on('connection', ws => {
-  console.log('New client connected');
-  ws.send(JSON.stringify({ type: 'lootListUpdate', items: liveItems }));
-
-  ws.on('message', msg => {
+// Load items.txt
+async function loadItemsTxt() {
     try {
-      const data = JSON.parse(msg);
-      if (data.type === 'itemUpdate') {
-        const item = liveItems[data.index];
-        if (item) {
-          item.recipient = data.recipient;
-          item.distributed = data.distributed;
-          broadcast({ type: 'itemUpdate', index: data.index, ...item }, ws);
-        }
-      }
+        const data = await fs.readFile('items.txt', 'utf8');
+        const itemsDb = {};
+        data.split('\n').forEach(line => {
+            if (line.trim()) {
+                const fields = line.split('|');
+                const name = fields[1]; // name field
+                const mageloId = fields[5]; // id field
+                itemsDb[name] = { mageloId, lore: fields[2] }; // Store lore for tooltips
+            }
+        });
+        return itemsDb;
     } catch (err) {
-      console.error('Invalid WS message:', err);
+        console.error('Error loading items.txt:', err);
+        return {};
     }
-  });
+}
+
+function processLogFile(data) {
+    // Parse log lines like: [Sat May 31 17:16:00 2025] Alexr looted a Flowing Black Silk Sash from a corpse.
+    const lootPattern = /\[(.*?)\] (\w+) looted an? ([\w\s'-]+) from/;
+    const lootData = [];
+    data.split('\n').forEach(line => {
+        const match = line.match(lootPattern);
+        if (match) {
+            const [, timestamp, player, item] = match;
+            lootData.push({
+                player,
+                item: item.trim(),
+                timestamp
+            });
+        }
+    });
+    return lootData;
+}
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-server.listen(PORT, () => {
-  console.log('🚀 Server started on port', PORT);
+app.post('/upload', async (req, res) => {
+    if (!req.files || !req.files.logFile) {
+        return res.status(400).json({ message: 'No file uploaded' });
+    }
+    try {
+        const logFile = req.files.logFile;
+        const data = logFile.data.toString('utf8');
+        const lootData = processLogFile(data);
+        if (!lootData.length) {
+            return res.status(400).json({ message: 'No loot data found in log file' });
+        }
+        const itemsDb = await loadItemsTxt();
+        lootData.forEach(entry => {
+            entry.mageloId = itemsDb[entry.item]?.mageloId || 'Unknown';
+            entry.lore = itemsDb[entry.item]?.lore || entry.item;
+        });
+        res.json({ lootData });
+    } catch (err) {
+        console.error('Error processing file:', err);
+        res.status(500).json({ message: 'Error processing file' });
+    }
+});
 
-  // ✅ Link to your Dropbox file with raw=1
-  loadItemDatabaseFromURL(
-    'https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&raw=1'
-  );
+app.post('/assign', async (req, res) => {
+    const { selectedItems, recipients } = req.body;
+    try {
+        const assignments = selectedItems.map((item, i) => ({
+            item,
+            recipient: recipients[i],
+            date: new Date().toISOString()
+        }));
+        const historyLine = assignments.map(a => `${a.date},${a.item},${a.recipient}`).join('\n');
+        await fs.appendFile('loot_history.txt', historyLine + '\n');
+        // Broadcast assignments to WebSocket clients
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({ type: 'assignment', assignments }));
+            }
+        });
+        res.json({ message: 'Loot assigned successfully' });
+    } catch (err) {
+        console.error('Error saving assignments:', err);
+        res.status(500).json({ message: 'Error saving assignments' });
+    }
+});
+
+app.get('/history', async (req, res) => {
+    try {
+        const data = await fs.readFile('loot_history.txt', 'utf8').catch(() => '');
+        const history = data.split('\n').filter(line => line).map(line => {
+            const [date, item, recipient] = line.split(',');
+            return { date, item, recipient };
+        });
+        res.json({ history });
+    } catch (err) {
+        console.error('Error reading history:', err);
+        res.status(500).json({ message: 'Error reading history' });
+    }
+});
+
+// WebSocket connection
+wss.on('connection', ws => {
+    console.log('WebSocket client connected');
+    ws.on('close', () => console.log('WebSocket client disconnected'));
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
