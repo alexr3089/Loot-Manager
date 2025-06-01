@@ -9,12 +9,13 @@ const app = express();
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Middleware
 app.use(cors());
 app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload());
+
+let items = []; // In-memory loot list
 
 // Load items.txt
 async function loadItemsTxt() {
@@ -24,9 +25,9 @@ async function loadItemsTxt() {
         data.split('\n').forEach(line => {
             if (line.trim()) {
                 const fields = line.split('|');
-                const name = fields[1]; // name field
-                const mageloId = fields[5]; // id field
-                itemsDb[name] = { mageloId, lore: fields[2] }; // Store lore for tooltips
+                const name = fields[1]; // name
+                const mageloId = fields[5]; // id
+                itemsDb[name] = mageloId;
             }
         });
         return itemsDb;
@@ -37,18 +38,14 @@ async function loadItemsTxt() {
 }
 
 function processLogFile(data) {
-    // Parse log lines like: [Sat May 31 17:16:00 2025] Alexr looted a Flowing Black Silk Sash from a corpse.
+    // Parse log lines like: [Sat May 31 23:34:56 2025] Alexr looted a Cloth Cap from a corpse.
     const lootPattern = /\[(.*?)\] (\w+) looted an? ([\w\s'-]+) from/;
     const lootData = [];
     data.split('\n').forEach(line => {
         const match = line.match(lootPattern);
         if (match) {
             const [, timestamp, player, item] = match;
-            lootData.push({
-                player,
-                item: item.trim(),
-                timestamp
-            });
+            lootData.push({ looter: player, name: item.trim(), timestamp });
         }
     });
     return lootData;
@@ -58,69 +55,77 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.post('/upload', async (req, res) => {
+app.post('/upload-log', async (req, res) => {
     if (!req.files || !req.files.logFile) {
-        return res.status(400).json({ message: 'No file uploaded' });
+        return res.status(400).json({ status: 'error', message: 'No file uploaded' });
     }
     try {
         const logFile = req.files.logFile;
         const data = logFile.data.toString('utf8');
         const lootData = processLogFile(data);
         if (!lootData.length) {
-            return res.status(400).json({ message: 'No loot data found in log file' });
+            return res.status(400).json({ status: 'error', message: 'No loot data found' });
         }
         const itemsDb = await loadItemsTxt();
-        lootData.forEach(entry => {
-            entry.mageloId = itemsDb[entry.item]?.mageloId || 'Unknown';
-            entry.lore = itemsDb[entry.item]?.lore || entry.item;
-        });
-        res.json({ lootData });
-    } catch (err) {
-        console.error('Error processing file:', err);
-        res.status(500).json({ message: 'Error processing file' });
-    }
-});
-
-app.post('/assign', async (req, res) => {
-    const { selectedItems, recipients } = req.body;
-    try {
-        const assignments = selectedItems.map((item, i) => ({
-            item,
-            recipient: recipients[i],
-            date: new Date().toISOString()
+        items = lootData.map(entry => ({
+            looter: entry.looter,
+            name: entry.name,
+            id: itemsDb[entry.name] || 'Unknown',
+            recipient: '',
+            distributed: false
         }));
-        const historyLine = assignments.map(a => `${a.date},${a.item},${a.recipient}`).join('\n');
-        await fs.appendFile('loot_history.txt', historyLine + '\n');
-        // Broadcast assignments to WebSocket clients
+        // Broadcast to WebSocket clients
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'assignment', assignments }));
+                client.send(JSON.stringify({ type: 'lootListUpdate', items }));
             }
         });
-        res.json({ message: 'Loot assigned successfully' });
+        res.json({ status: 'ok' });
     } catch (err) {
-        console.error('Error saving assignments:', err);
-        res.status(500).json({ message: 'Error saving assignments' });
+        console.error('Error processing file:', err);
+        res.status(500).json({ status: 'error', message: 'Error processing file' });
     }
 });
 
-app.get('/history', async (req, res) => {
-    try {
-        const data = await fs.readFile('loot_history.txt', 'utf8').catch(() => '');
-        const history = data.split('\n').filter(line => line).map(line => {
-            const [date, item, recipient] = line.split(',');
-            return { date, item, recipient };
-        });
-        res.json({ history });
-    } catch (err) {
-        console.error('Error reading history:', err);
-        res.status(500).json({ message: 'Error reading history' });
-    }
-});
-
-// WebSocket connection
+// WebSocket
 wss.on('connection', ws => {
     console.log('WebSocket client connected');
+    ws.send(JSON.stringify({ type: 'lootListUpdate', items }));
+    ws.on('message', async message => {
+        try {
+            const data = JSON.parse(message);
+            if (data.type === 'itemUpdate') {
+                const { index, recipient, distributed } = data;
+                if (items[index]) {
+                    items[index].recipient = recipient;
+                    items[index].distributed = distributed;
+                    if (distributed) {
+                        const assignment = {
+                            date: new Date().toISOString(),
+                            item: items[index].name,
+                            recipient
+                        };
+                        await fs.appendFile('loot_history.txt', `${assignment.date},${assignment.item},${assignment.recipient}\n`);
+                    }
+                    wss.clients.forEach(client => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({
+                                type: 'itemUpdate',
+                                index,
+                                looter: items[index].looter,
+                                name: items[index].name,
+                                id: items[index].id,
+                                recipient,
+                                distributed
+                            }));
+                        }
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('WebSocket error:', err);
+        }
+    });
     ws.on('close', () => console.log('WebSocket client disconnected'));
 });
 
