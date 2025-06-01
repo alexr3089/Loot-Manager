@@ -10,8 +10,8 @@ const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
 app.use(fileUpload()); // ✅ Enable file upload parsing
+app.use(express.static(path.join(__dirname, 'public')));
 
 
 let items = []; // In-memory loot list
