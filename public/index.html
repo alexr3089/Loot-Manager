@@ -69,7 +69,13 @@
         `;
         table.appendChild(row);
       });
-      setTimeout(() => window.mageloTooltip?.scan(), 0);
+      setTimeout(() => {
+        if (window.mageloTooltip && typeof window.mageloTooltip.scan === 'function') {
+        mageloTooltip.scan();
+        } else {
+        console.warn("Magelo tooltip not available yet");
+        }
+      }, 100);
     }
 
     function updateItem(index) {
