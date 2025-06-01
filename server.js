@@ -10,10 +10,11 @@ const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(cors({ origin: '*' })); // Allow Zoho Sites
+app.use(fileUpload());
 app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(fileUpload());
+
 
 let items = []; // In-memory loot list
 
