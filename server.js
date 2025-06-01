@@ -22,7 +22,7 @@ let itemMap = {};
 let liveItems = [];
 
 // Fetch and parse items.txt from Dropbox
-const dropboxUrl = "https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&st=tnv6b1vb&dl=1";
+const dropboxUrl = "https://www.dropbox.com/scl/fi/m4id9ni2cwcm0plqs52yh/items.txt?rlkey=j4xgk8spzrh7p3egswepurujd&st=bw1zyta1&dl=0";
 
 function loadItemMapFromDropbox() {
   https.get(dropboxUrl, res => {
