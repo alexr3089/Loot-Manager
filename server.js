@@ -9,7 +9,7 @@ const app = express();
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(cors());
+app.use(cors({ origin: '*' })); // Allow Zoho Sites
 app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -56,15 +56,17 @@ app.get('/', (req, res) => {
 });
 
 app.post('/upload-log', async (req, res) => {
+    console.log('Received upload request:', req.files); // Debug
     if (!req.files || !req.files.logFile) {
-        return res.status(400).json({ status: 'error', message: 'No file uploaded' });
+        console.error('No logFile in request');
+        return res.status(400).json({ status: 'error', message: 'No file uploaded or incorrect field name' });
     }
     try {
         const logFile = req.files.logFile;
         const data = logFile.data.toString('utf8');
         const lootData = processLogFile(data);
         if (!lootData.length) {
-            return res.status(400).json({ status: 'error', message: 'No loot data found' });
+            return res.status(400).json({ status: 'error', message: 'No loot data found in log file' });
         }
         const itemsDb = await loadItemsTxt();
         items = lootData.map(entry => ({
@@ -74,7 +76,6 @@ app.post('/upload-log', async (req, res) => {
             recipient: '',
             distributed: false
         }));
-        // Broadcast to WebSocket clients
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(JSON.stringify({ type: 'lootListUpdate', items }));
@@ -83,7 +84,7 @@ app.post('/upload-log', async (req, res) => {
         res.json({ status: 'ok' });
     } catch (err) {
         console.error('Error processing file:', err);
-        res.status(500).json({ status: 'error', message: 'Error processing file' });
+        res.status(500).json({ status: 'error', message: 'Error processing file: ' + err.message });
     }
 });
 
