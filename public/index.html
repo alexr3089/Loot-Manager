@@ -60,20 +60,25 @@
       const table = document.getElementById('itemTable');
       table.innerHTML = '';
       items.forEach((item, i) => {
+        const hasValidId = item.id && Number(item.id) > 1000;
+        const mageloLink = hasValidId
+          ? `<a href="https://eq.magelo.com/item/${item.id}" class="mageloLink" target="_blank">${item.name}</a>`
+          : item.name;
+
         const row = document.createElement('tr');
         row.innerHTML = `
           <td>${item.looter}</td>
-          <td><a href="https://eq.magelo.com/item/${item.id}" class="mageloLink" target="_blank">${item.name}</a></td>
+          <td>${mageloLink}</td>
           <td><input type="text" value="${item.recipient || ''}" onchange="updateItem(${i})" /></td>
           <td><input type="checkbox" ${item.distributed ? 'checked' : ''} onchange="updateItem(${i})" /></td>
         `;
         table.appendChild(row);
       });
+
+      // Re-scan for Magelo tooltips
       setTimeout(() => {
         if (window.mageloTooltip && typeof window.mageloTooltip.scan === 'function') {
-        mageloTooltip.scan();
-        } else {
-        console.warn("Magelo tooltip not available yet");
+          mageloTooltip.scan();
         }
       }, 100);
     }
